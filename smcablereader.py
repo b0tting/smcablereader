@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from flask import Flask, jsonify
 import sys
 import time
@@ -27,8 +28,11 @@ ser.port="/dev/ttyUSB0"
 
 current = 0
 current_return = 0
+history = [0] * 20
+
 def read_meter():
     global current
+    global history
 
     current_pattern = re.compile('1-0:1.7.0\(([0-9]+\.[0-9]+)\*')
     current_return_pattern = re.compile('1-0:2.7.0\(([0-9]+\.[0-9]+)\*')
@@ -49,6 +53,8 @@ def read_meter():
         match = current_pattern.match(str(p1_raw))
         if(match and match.group(1)):
             current = int(float(match.group(1)) * 1000)
+	    history = history[1:]
+            history.append(current)
         else:
             ## Teruggegeven waarde zal vaak 0 zijn - deze wordt al ingehouden op de afgenomen stroom
             match = current_return_pattern.match(str(p1_raw))
@@ -63,11 +69,11 @@ def read_meter():
 
 @app.route('/')
 def show_current(): 
-    return jsonify({"current_usage_mw":current,"current_return_mw":current_return })
+    return jsonify({"current_usage_mw":current,"current_return_mw":current_return, "history_usage_mw":history })
 
 thread = Thread(target = read_meter)
 thread.daemon=True
 thread.start()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    app.run(host='0.0.0.0', port=82)
