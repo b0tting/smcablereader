@@ -5,6 +5,7 @@ import time
 import serial
 from threading import Thread
 import re
+import logging
 
 app = Flask(__name__)
 
@@ -57,7 +58,7 @@ def read_meter():
             current_line = str(ser.readline())
 
         except:
-            print("Problem reading serial port. Backing off for 60 seconds..")
+            log.error("Problem reading serial port. Backing off for 60 seconds..")
             time.sleep(60)
             try:
                 ## We failed? Restart, then rerun the loop
@@ -80,9 +81,11 @@ def read_meter():
                 current_return = [get_mw_from_w(m.group(1)) for line in current_frame for m in [current_return_pattern.search(line)] if m][0]
 
                 history.append(current - current_return)
+                history = history[-20:]
             except IndexError, e:
-                print("Could not find the current mWh, but did connect. This could be due to starting halfway through a frame, in that case this error will dissappear.")
+                log.error("Could not find the current mWh, but did connect. This could be due to starting halfway through a frame, in that case this error will not appear again.")
 
+            ## clone the current frame for use in the /raw method, then empty the current frame for the next run
             last_frame = list(current_frame)
             current_frame[:] = []
 
@@ -107,5 +110,7 @@ thread = Thread(target = read_meter)
 thread.daemon=True
 thread.start()
 
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=82)
