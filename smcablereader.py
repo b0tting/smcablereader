@@ -25,9 +25,12 @@ ser.rtscts=0
 ser.timeout=20
 ser.port="/dev/ttyUSB0"
 
+## Size of the history list
+history_size = 20
+
 current = 0
 current_return = 0
-history = [0] * 20
+history = [0] * history_size
 last_frame = None
 
 def get_mw_from_w(w):
@@ -75,13 +78,15 @@ def read_meter():
         if current_line[:1] == "!":
             try:
                 ## Match the current line with the pattern for energy use
+                ## Not the most efficient method, since we only need the first hit but the list will still be fully
+                ## rolled through the matcher. 
                 current = [get_mw_from_w(m.group(1)) for line in current_frame for m in [current_pattern.search(line)] if m][0]
 
                 ## Match the current line with the pattern for energy use
                 current_return = [get_mw_from_w(m.group(1)) for line in current_frame for m in [current_return_pattern.search(line)] if m][0]
 
                 history.append(current - current_return)
-                history = history[-20:]
+                history = history[-history_size:]
             except IndexError, e:
                 log.error("Could not find the current mWh, but did connect. This could be due to starting halfway through a frame, in that case this error will not appear again.")
 
