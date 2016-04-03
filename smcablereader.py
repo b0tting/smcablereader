@@ -27,14 +27,17 @@ ser.port="/dev/ttyUSB0"
 current = 0
 current_return = 0
 history = [0] * 20
-last = []
+last_frame = None
 
+def get_mw_from_w(w):
+    return int(float(w) * 1000)
 
 def read_meter():
     """
     Read the state that the smart meter pushes out and set the result in global vars
     """
     global history
+    global last_frame
     global current
     global current_return
 
@@ -44,13 +47,15 @@ def read_meter():
     ## Open serial connection.
     ## If this fails, try getting "cu -l /dev/ttyUSB0 -s 115200 --parity=none" to work first
     ser.open()
-    empty_first = False;
+
 
     ## So we will continously attempt to read data from the socket, automatically pausing
     ## if there is none.
+    current_frame = [];
     while True:
         try:
-            p1_raw = ser.readline()
+            current_line = str(ser.readline())
+
         except:
             print("Problem reading serial port. Backing off for 60 seconds..")
             time.sleep(60)
@@ -62,31 +67,25 @@ def read_meter():
             except:
                 pass
 
-        current_line = str(p1_raw)
+        current_frame.append(current_line)
 
-        ## Match the current line with the pattern for energy use
-        match = current_pattern.match(current_line)
-        if(match and match.group(1)):
-            current = int(float(match.group(1)) * 1000)
-            history = history[1:]
-            history.append(current)
-        ## Match the current line with the pattern for energy return to the supplier
-        else:
-            ## Often, this will be zero even with your solar panels blazing. This is because the meter already
-            ## substracts electricity delivered from current energy consumed
-            match = current_return_pattern.match(current_line)
-            if match and match.group(1):
-                current_return = int(float(match.group(1)) * 1000)
-
-        ## If we reach the last line in the message, starting with the ! terminator, reset our
-        ## line reader.
+        ## If we reach the last line in the message, starting with the ! terminator, get the
+        ## mw's and reset our line reader.
         if current_line[:1] == "!":
-            empty_first = True
-        elif empty_first:
-                last[:] = []
-                empty_first = False
+            try:
+                ## Match the current line with the pattern for energy use
+                current = [get_mw_from_w(m.group(1)) for line in current_frame for m in [current_pattern.search(line)] if m][0]
 
-        last.append(current_line)
+                ## Match the current line with the pattern for energy use
+                current_return = [get_mw_from_w(m.group(1)) for line in current_frame for m in [current_return_pattern.search(line)] if m][0]
+
+                history.append(current - current_return)
+            except IndexError, e:
+                print("Could not find the current mWh, but did connect. This could be due to starting halfway through a frame, in that case this error will dissappear.")
+
+            last_frame = list(current_frame)
+            current_frame[:] = []
+
 
     ## Unreacheable, but for future reference: close the serial connection here
     try:
@@ -101,7 +100,7 @@ def show_current():
 @app.route('/raw')
 def show_raw():
     ## Just dump the contents of the list of raw messages
-    return ''.join(last)
+    return ''.join(last_frame)
 
 ## Kick off the meter thread so that it runs seperate from the webserver
 thread = Thread(target = read_meter)
